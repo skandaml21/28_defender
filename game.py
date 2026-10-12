@@ -1,3 +1,4 @@
+
 import math
 import random
 import pygame
@@ -11,9 +12,8 @@ FALL_LIMIT = 160
 PHASES = [random.uniform(0, math.tau) for _ in range(3)]
 
 
-
 def sky_color(wave):
-    """Return an (r, g, b) sky colour for the current wave, or None for the default."""
+    """Return an RGB sky colour for the current wave, or None for the default."""
     if wave <= 1:
         return None
     elif wave <= 3:
@@ -26,10 +26,9 @@ def sky_color(wave):
         return (45, 12, 20)
 
 
-
 def on_humanoid_rescued(humanoid):
-    """Called when the player catches a falling humanoid; add a bonus or celebration here."""
-    pass
+    """Return a celebration message when a falling humanoid is rescued."""
+    return "+500 RESCUE!"
 
 
 def bonus_life_threshold():
@@ -44,7 +43,12 @@ def wrap_delta(a, b):
 
 def ground_y(x):
     angle = math.tau * x / WORLD_W
-    return 505 - 25 * math.sin(3 * angle + PHASES[0]) - 14 * math.sin(7 * angle + PHASES[1]) - 6 * math.sin(13 * angle + PHASES[2])
+    return (
+        505
+        - 25 * math.sin(3 * angle + PHASES[0])
+        - 14 * math.sin(7 * angle + PHASES[1])
+        - 6 * math.sin(13 * angle + PHASES[2])
+    )
 
 
 class Humanoid:
@@ -72,7 +76,10 @@ class Lander:
         self.mutant = False
 
     def pick_target(self, humanoids, landers):
-        free = [h for h in humanoids if h.state == "ground" and not any(h is l.target for l in landers)]
+        free = [
+            h for h in humanoids
+            if h.state == "ground" and not any(h is l.target for l in landers)
+        ]
         self.target = random.choice(free) if free else None
 
     def update(self, dt, player, humanoids, landers, wave):
@@ -84,10 +91,13 @@ class Lander:
             self.x = (self.x + dx / dist * speed * dt + random.uniform(-40, 40) * dt) % WORLD_W
             self.y += dy / dist * speed * dt
             return
+
         if self.target is None or self.target.state not in ("ground", "carried"):
             self.target = None
             self.pick_target(humanoids, landers)
+
         target = self.target
+
         if target is None:
             dx, dy = wrap_delta(self.x, player.x), player.y - self.y
             dist = math.hypot(dx, dy) or 1
@@ -134,10 +144,15 @@ class Game:
 
     def reset(self):
         self.player = Player()
-        self.humanoids = [Humanoid(i * WORLD_W / HUMANOID_COUNT + 100) for i in range(HUMANOID_COUNT)]
+        self.humanoids = [
+            Humanoid(i * WORLD_W / HUMANOID_COUNT + 100)
+            for i in range(HUMANOID_COUNT)
+        ]
         self.landers, self.bullets = [], []
         self.score, self.lives, self.wave, self.state = 0, 3, 1, "play"
         self.bonus_awarded = 0
+        self.rescue_message = ""
+        self.rescue_message_timer = 0.0
         self.start_wave()
 
     def start_wave(self):
@@ -156,31 +171,50 @@ class Game:
     def update(self, dt, keys):
         if self.state != "play":
             return
+
+        self.rescue_message_timer = max(0.0, self.rescue_message_timer - dt)
         player = self.player
         player.update(dt, keys)
+
         threshold = bonus_life_threshold()
         if threshold and self.score // threshold > self.bonus_awarded:
             self.bonus_awarded = self.score // threshold
             self.lives += 1
+
         if keys[pygame.K_SPACE] and player.cooldown <= 0:
             player.cooldown = 0.18
-            self.bullets.append({"x": player.x + player.facing * 20, "y": player.y, "dir": player.facing, "life": 0.7})
+            self.bullets.append({
+                "x": player.x + player.facing * 20,
+                "y": player.y,
+                "dir": player.facing,
+                "life": 0.7,
+            })
+
         self.spawn_timer -= dt
         if self.to_spawn > 0 and self.spawn_timer <= 0:
             self.landers.append(Lander(random.uniform(0, WORLD_W)))
             self.to_spawn -= 1
             self.spawn_timer = 1.5
+
         for lander in self.landers:
             lander.update(dt, player, self.humanoids, self.landers, self.wave)
+
         for humanoid in self.humanoids[:]:
             humanoid.update(dt)
             if humanoid.state == "dead":
                 self.humanoids.remove(humanoid)
-            elif humanoid.state == "falling" and abs(wrap_delta(player.x, humanoid.x)) < 24 and abs(humanoid.y - player.y) < 24:
+            elif (
+                humanoid.state == "falling"
+                and abs(wrap_delta(player.x, humanoid.x)) < 24
+                and abs(humanoid.y - player.y) < 24
+            ):
                 humanoid.state, humanoid.y = "ground", ground_y(humanoid.x) - 8
                 self.score += 500
-                on_humanoid_rescued(humanoid)
+                self.rescue_message = on_humanoid_rescued(humanoid)
+                self.rescue_message_timer = 1.5
+
         self.update_bullets(dt)
+
         if player.invulnerable <= 0:
             for lander in self.landers:
                 if abs(wrap_delta(player.x, lander.x)) < 22 and abs(lander.y - player.y) < 18:
@@ -189,6 +223,7 @@ class Game:
                     if self.lives <= 0:
                         self.state = "lose"
                     break
+
         if self.to_spawn == 0 and not self.landers:
             self.wave += 1
             self.start_wave()
@@ -211,8 +246,12 @@ class Game:
         pygame.draw.rect(screen, (10, 10, 30), (0, 0, VIEW_W, RADAR_H))
         pygame.draw.rect(screen, (90, 90, 140), (0, 0, VIEW_W, RADAR_H), 1)
         blips = [(h.x, h.y, (90, 230, 120)) for h in self.humanoids]
-        blips += [(l.x, l.y, (255, 90, 90) if l.mutant else (230, 200, 60)) for l in self.landers]
+        blips += [
+            (l.x, l.y, (255, 90, 90) if l.mutant else (230, 200, 60))
+            for l in self.landers
+        ]
         blips.append((self.player.x, self.player.y, (255, 255, 255)))
+
         for x, y, color in blips:
             rx = (x % WORLD_W) / WORLD_W * VIEW_W
             ry = (y - PLAY_TOP) / (VIEW_H - PLAY_TOP) * (RADAR_H - 8) + 4
@@ -220,28 +259,58 @@ class Game:
 
     def draw(self, screen):
         screen.fill(sky_color(self.wave) or (5, 5, 20))
-        points = [(sx, ground_y(self.player.x + sx - VIEW_W / 2)) for sx in range(0, VIEW_W + 8, 8)]
+        points = [
+            (sx, ground_y(self.player.x + sx - VIEW_W / 2))
+            for sx in range(0, VIEW_W + 8, 8)
+        ]
         pygame.draw.polygon(screen, (110, 70, 40), points + [(VIEW_W, VIEW_H), (0, VIEW_H)])
         pygame.draw.lines(screen, (230, 150, 60), False, points, 2)
+
         for humanoid in self.humanoids:
             sx = self.screen_x(humanoid.x)
             if -20 < sx < VIEW_W + 20:
                 pygame.draw.rect(screen, (90, 230, 120), (sx - 3, humanoid.y - 10, 6, 14))
+
         for lander in self.landers:
             sx = self.screen_x(lander.x)
             if -20 < sx < VIEW_W + 20:
                 color = (255, 90, 90) if lander.mutant else (230, 200, 60)
                 pygame.draw.ellipse(screen, color, (sx - 14, lander.y - 9, 28, 18))
+
         for bullet in self.bullets:
             sx = self.screen_x(bullet["x"])
-            pygame.draw.line(screen, (255, 255, 200), (sx - 8, bullet["y"]), (sx + 8, bullet["y"]), 2)
+            pygame.draw.line(
+                screen,
+                (255, 255, 200),
+                (sx - 8, bullet["y"]),
+                (sx + 8, bullet["y"]),
+                2,
+            )
+
         player = self.player
         if player.invulnerable <= 0 or int(player.invulnerable * 10) % 2 == 0:
             f, cx = player.facing, VIEW_W / 2
-            pygame.draw.polygon(screen, (240, 240, 250), [(cx + f * 18, player.y), (cx - f * 14, player.y - 8), (cx - f * 14, player.y + 8)])
+            pygame.draw.polygon(
+                screen,
+                (240, 240, 250),
+                [(cx + f * 18, player.y), (cx - f * 14, player.y - 8), (cx - f * 14, player.y + 8)],
+            )
+
         self.draw_radar(screen)
-        hud = self.font.render(f"Score {self.score}  Lives {self.lives}  Wave {self.wave}  Humanoids {len(self.humanoids)}", True, (240, 240, 240))
+        hud = self.font.render(
+            f"Score {self.score}  Lives {self.lives}  Wave {self.wave}  Humanoids {len(self.humanoids)}",
+            True,
+            (240, 240, 240),
+        )
         screen.blit(hud, (10, RADAR_H + 4))
+
+        if self.rescue_message_timer > 0:
+            message = self.font.render(self.rescue_message, True, (100, 255, 140))
+            screen.blit(
+                message,
+                message.get_rect(center=(VIEW_W // 2, RADAR_H + 35)),
+            )
+
         if self.state == "lose":
             label = self.font.render("GAME OVER - Press R", True, (255, 255, 120))
             screen.blit(label, label.get_rect(center=(VIEW_W // 2, VIEW_H // 2)))
@@ -254,6 +323,7 @@ def main():
     clock = pygame.time.Clock()
     game = Game()
     running = True
+
     while running:
         dt = min(clock.tick(60) / 1000, 0.05)
         for event in pygame.event.get():
@@ -261,9 +331,11 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                 game.reset()
+
         game.update(dt, pygame.key.get_pressed())
         game.draw(screen)
         pygame.display.flip()
+
     pygame.quit()
 
 
