@@ -11,9 +11,20 @@ FALL_LIMIT = 160
 PHASES = [random.uniform(0, math.tau) for _ in range(3)]
 
 
+
 def sky_color(wave):
     """Return an (r, g, b) sky colour for the current wave, or None for the default."""
-    pass
+    if wave <= 1:
+        return None
+    elif wave <= 3:
+        return (8, 8, 35)
+    elif wave <= 5:
+        return (20, 8, 45)
+    elif wave <= 7:
+        return (35, 8, 35)
+    else:
+        return (45, 12, 20)
+
 
 
 def on_humanoid_rescued(humanoid):
